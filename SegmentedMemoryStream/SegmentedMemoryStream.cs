@@ -354,13 +354,6 @@ namespace Bazooka.SegmentedMemoryStream
         }
 
         /// <summary>
-        /// No-op for memory based stream. Does nothing.
-        /// </summary>
-        public override void Flush()
-        {
-        }
-
-        /// <summary>
         /// Pre-allocate extra segments to write data.
         /// </summary>
         /// <param name="sizeToWrite">The size of the data to write</param>
@@ -408,6 +401,13 @@ namespace Bazooka.SegmentedMemoryStream
             }
 
             return true;
+        }
+
+        /// <summary>
+        /// No-op for memory based stream. Does nothing.
+        /// </summary>
+        public override void Flush()
+        { 
         }
     }
 }
