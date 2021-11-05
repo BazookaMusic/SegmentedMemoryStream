@@ -8,7 +8,7 @@ namespace Bazooka.SegmentedMemoryStream
     using System.Threading.Tasks;
     using System.Threading;
 
-    public class SegmentedMemoryStream : Stream, IDisposable
+    public class SegmentedMemoryStream : Stream
     {
         // 2^16 = 64K is below LOH threshold
         private const int defaultSegmentSizeExponent = 16;
@@ -73,8 +73,6 @@ namespace Bazooka.SegmentedMemoryStream
 
             set
             {
-                
-
                 if (value < 0)
                 {
                     throw new ArgumentOutOfRangeException(string.Format("The position {0} is outside the bounds of the stream.", value));
@@ -117,8 +115,6 @@ namespace Bazooka.SegmentedMemoryStream
         /// <param name="startingCapacity">The starting capacity of the stream.</param>
         public SegmentedMemoryStream(int startingCapacity, int segmentSizeExponent)
         {
-            
-
             if (startingCapacity <= 0)
             {
                 throw new ArgumentOutOfRangeException(string.Format("'{0}' has to be a positive integer", nameof(startingCapacity)));
@@ -143,14 +139,6 @@ namespace Bazooka.SegmentedMemoryStream
         }
 
         /// <summary>
-        /// No-op, because the stream is memory based.
-        /// </summary>
-        public override void Flush()
-        {
-            // does not do anything due to no underlying device      
-        }
-
-        /// <summary>
         /// Returns the total amount of bytes read from the stream and advances the position by the same amount.
         /// </summary>
         /// <param name="buffer">The buffer to write the data into.</param>
@@ -159,8 +147,6 @@ namespace Bazooka.SegmentedMemoryStream
         /// <returns>The amount of bytes read or zero if the end of the stream was reached.</returns>
         public override int Read(byte[] buffer, int offset, int count)
         {
-            
-
             if (buffer == null)
             {
                 throw new ArgumentNullException(nameof(buffer));
@@ -183,8 +169,6 @@ namespace Bazooka.SegmentedMemoryStream
         /// <returns>The amount of bytes read or zero if the end of the stream was reached.</returns>
         public override int Read(Span<byte> buffer)
         {
-            
-
             if (buffer == null)
             {
                 throw new ArgumentNullException(nameof(buffer));
@@ -219,8 +203,6 @@ namespace Bazooka.SegmentedMemoryStream
         /// <returns>The final position</returns>
         public override long Seek(long offset, SeekOrigin origin)
         {
-            
-
             switch (origin)
             {
                 case SeekOrigin.Begin:
@@ -243,8 +225,6 @@ namespace Bazooka.SegmentedMemoryStream
         /// <param name="value">The value to set the length to.</param>
         public override void SetLength(long value)
         {
-            
-
             if (this.Length < 0)
             {
                 throw new ArgumentOutOfRangeException("Length cannot be negative.");
@@ -270,8 +250,6 @@ namespace Bazooka.SegmentedMemoryStream
         /// <param name="count">How many bytes to write.</param>
         public override void Write(byte[] buffer, int offset, int count)
         {
-            
-
             if (buffer == null)
             {
                 throw new ArgumentNullException(nameof(buffer));
@@ -291,8 +269,6 @@ namespace Bazooka.SegmentedMemoryStream
         /// <param name="buffer">The buffer of data.</param>
         public override void Write(ReadOnlySpan<byte> buffer)
         {
-            
-
             if (buffer == null)
             {
                 throw new ArgumentNullException(nameof(buffer));
@@ -326,18 +302,9 @@ namespace Bazooka.SegmentedMemoryStream
             }
         }
 
-        /// <summary>
-        /// No-op
-        /// </summary>
-        public override void Close()
-        {
-        }
-
         /// <inheritdoc/>
         public override void CopyTo(Stream destination, int bufferSize)
         {
-            
-
             if (destination == null)
             {
                 throw new ArgumentNullException(nameof(destination));
@@ -359,8 +326,6 @@ namespace Bazooka.SegmentedMemoryStream
 
         public override int ReadByte()
         {
-            
-
             if (this.Position == this.finalWrittenByteIndex)
             {
                 return -1;
@@ -376,8 +341,6 @@ namespace Bazooka.SegmentedMemoryStream
 
         public override void WriteByte(byte value)
         {
-            
-
             if (this.Position + 1 > this.Capacity)
             {
                 this.EnsureSizeForWrite(this.Position + 1);
@@ -391,13 +354,18 @@ namespace Bazooka.SegmentedMemoryStream
         }
 
         /// <summary>
+        /// No-op for memory based stream. Does nothing.
+        /// </summary>
+        public override void Flush()
+        {
+        }
+
+        /// <summary>
         /// Pre-allocate extra segments to write data.
         /// </summary>
         /// <param name="sizeToWrite">The size of the data to write</param>
         public void EnsureSizeForWrite(long sizeToWrite)
         {
-            
-
             long finalPosition = this.Position + sizeToWrite;
             int nSegmentsAfterWrite = (int)((ulong)finalPosition >> this.bitShiftForModulo) + ((finalPosition & (this.SegmentSize - 1)) == 0 ? 0 : 1);
 
@@ -406,7 +374,7 @@ namespace Bazooka.SegmentedMemoryStream
             if (segmentsToAdd > 0)
             {
                 this.segments.Capacity = nSegmentsAfterWrite;
-                
+
                 for (int i = 0; i < segmentsToAdd; i++)
                 {
                     this.segments.Add(new byte[this.SegmentSize]);
@@ -421,8 +389,6 @@ namespace Bazooka.SegmentedMemoryStream
         /// </summary>
         public void Shrink()
         {
-            
-
             int nSegmentsAfterShrink = (int)((ulong)this.Length >> this.bitShiftForModulo) + ((this.Length & (this.SegmentSize - 1)) == 0 ? 0 : 1);
             this.segments.RemoveRange(nSegmentsAfterShrink, this.segments.Count - nSegmentsAfterShrink);
 

@@ -215,16 +215,6 @@ namespace SegmentedMemoryStreamTest
             CompareStreamWithReferenceData(segStream2, reference, 1024);
         }
 
-        [TestMethod]
-        public void SegmentedMemoryStream_Dispose_Test()
-        {
-            var segStream = new SegmentedMemoryStream();
-            segStream.Dispose();
-
-
-            Assert.ThrowsException<ObjectDisposedException>(() => segStream.ReadByte());
-        }
-
         private void CompareStreamWithReferenceData(Stream stream, byte[] reference, int bufferSize)
         {
             byte[] buffer = new byte[bufferSize];
