@@ -28,7 +28,6 @@ namespace Bazooka.SegmentedMemoryStream
 
         private readonly List<byte[]> segments;
 
-        private bool disposed;
 
         private int CurrentSegmentIndex => (int)((ulong)this.Position >> this.bitShiftForModulo);
 
