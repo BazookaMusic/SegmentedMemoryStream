@@ -1,5 +1,5 @@
 # Segmented Memory Stream
-![Build and Tests](https://github.com/BazookaMusic/ SegmentedMemoryStream/.github/workflows/dotnet-test.yml/badge.svg)
+![Build and Tests](https://github.com/BazookaMusic/SegmentedMemoryStream/.github/workflows/dotnet-test.yml/badge.svg)
 
 ## What is it?
 The segmented memory stream is a memory stream implementation which splits the underlying storage into smaller sub-arrays instead of using a contiguous array. This way it avoids causing LOH allocations as well as having to re-allocate all of the memory when it requires more space.
