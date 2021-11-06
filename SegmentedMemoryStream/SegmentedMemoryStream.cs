@@ -2,16 +2,37 @@
 namespace Bazooka.SegmentedMemoryStream
 {
     using System;
+    using System.Buffers;
     using System.Collections.Generic;
     using System.IO;
-    using System.Buffers;
-    using System.Threading.Tasks;
-    using System.Threading;
 
     public class SegmentedMemoryStream : Stream
     {
+        // ~500mb of pooled arrays
+        private static Lazy<ArrayPool<byte>> arraySource = new Lazy<ArrayPool<byte>>(() => ArrayPool<byte>.Create(defaultMaxBufferSize, defaultMaxArraysPerBucket));
+
         // 2^16 = 64K is below LOH threshold
         private const int defaultSegmentSizeExponent = 16;
+
+        private const int defaultMaxBufferSize = 79 * 1024;
+
+        private const int defaultMaxArraysPerBucket = 6400;
+
+        private static (int MaxBufferSize, int MaxBuffersPerBucket) _arrayPoolStats = (defaultMaxBufferSize, defaultMaxArraysPerBucket);
+
+        /// <summary>
+        /// Gets or sets a tuple with the settings of the array pool used.
+        /// </summary>
+        public static (int MaxBufferSize, int MaxBuffersPerBucket) ArrayPoolSettings
+        {
+            get => _arrayPoolStats;
+
+            set
+            {
+                _arrayPoolStats = value;
+                arraySource = new Lazy<ArrayPool<byte>>(() => ArrayPool<byte>.Create(_arrayPoolStats.MaxBufferSize, _arrayPoolStats.MaxBuffersPerBucket));
+            }
+        }
 
         /// <summary>
         /// The default size of the segments.
@@ -27,6 +48,8 @@ namespace Bazooka.SegmentedMemoryStream
         private long _capacity;
 
         private readonly List<byte[]> segments;
+
+        private readonly bool usePooledArrays;
 
 
         private int CurrentSegmentIndex => (int)((ulong)this.Position >> this.bitShiftForModulo);
@@ -112,7 +135,8 @@ namespace Bazooka.SegmentedMemoryStream
         /// </summary>
         /// <param name="segmentSizeExponent">The exponent of the size. Size is 2 ^ segmentSizeExponent</param>
         /// <param name="startingCapacity">The starting capacity of the stream.</param>
-        public SegmentedMemoryStream(int startingCapacity, int segmentSizeExponent)
+        /// <param name="usePooledArrays">If an array pool should be used to allocate arrays.</param>
+        public SegmentedMemoryStream(int startingCapacity, int segmentSizeExponent, bool usePooledArrays = true)
         {
             if (startingCapacity <= 0)
             {
@@ -124,6 +148,7 @@ namespace Bazooka.SegmentedMemoryStream
                 throw new ArgumentOutOfRangeException(string.Format("'{0}' has to be a positive integer", nameof(segmentSizeExponent)));
             }
 
+            this.usePooledArrays = usePooledArrays;
             this.SegmentSize = 1 << segmentSizeExponent;
             this.bitShiftForModulo = segmentSizeExponent;
 
@@ -133,7 +158,8 @@ namespace Bazooka.SegmentedMemoryStream
 
             for (int i = 0; i < noSegments; i++)
             {
-                this.segments.Add(new byte[this.SegmentSize]);
+                var segment = this.usePooledArrays ? arraySource.Value.Rent(this.SegmentSize) : new byte[this.SegmentSize];
+                this.segments.Add(segment);
             }
         }
 
@@ -166,7 +192,7 @@ namespace Bazooka.SegmentedMemoryStream
         /// </summary>
         /// <param name="buffer">The buffer to write the data into.</param>
         /// <returns>The amount of bytes read or zero if the end of the stream was reached.</returns>
-        public override int Read(Span<byte> buffer)
+        public int Read(Span<byte> buffer)
         {
             if (buffer == null)
             {
@@ -177,14 +203,11 @@ namespace Bazooka.SegmentedMemoryStream
 
             while (count > 0 && this.Position != this.finalWrittenByteIndex)
             {
-                int currentSegmentIndex = this.CurrentSegmentIndex;
-
-                byte[] currentSegment = this.segments[currentSegmentIndex];
+                byte[] currentSegment = this.segments[this.CurrentSegmentIndex];
                 int startingPosition = this.CurrentSegmentPosition;
 
                 int amountToRead = Math.Min(currentSegment.Length - startingPosition, count);
                 Span<byte> segmentSpanToCopyFrom = currentSegment.AsSpan().Slice(startingPosition, amountToRead);
-
                 segmentSpanToCopyFrom.CopyTo(buffer.Slice(buffer.Length - count, count));
 
                 count -= amountToRead;
@@ -266,7 +289,7 @@ namespace Bazooka.SegmentedMemoryStream
         /// Writes a sequence of bytes to the current stream and advances the position accordingly.
         /// </summary>
         /// <param name="buffer">The buffer of data.</param>
-        public override void Write(ReadOnlySpan<byte> buffer)
+        public void Write(ReadOnlySpan<byte> buffer)
         {
             if (buffer == null)
             {
@@ -298,28 +321,6 @@ namespace Bazooka.SegmentedMemoryStream
 
                 this.finalWrittenByteIndex += amountToWrite;
                 this.Position += amountToWrite;
-            }
-        }
-
-        /// <inheritdoc/>
-        public override void CopyTo(Stream destination, int bufferSize)
-        {
-            if (destination == null)
-            {
-                throw new ArgumentNullException(nameof(destination));
-            }
-
-            if (bufferSize <= 0)
-            {
-                throw new ArgumentOutOfRangeException("Buffer size must be positive.");
-            }
-
-            Span<byte> buffer = stackalloc byte[bufferSize];
-
-            while (this.Position < this.finalWrittenByteIndex)
-            {
-                this.Read(buffer);
-                destination.Write(buffer);
             }
         }
 
@@ -369,7 +370,7 @@ namespace Bazooka.SegmentedMemoryStream
 
                 for (int i = 0; i < segmentsToAdd; i++)
                 {
-                    this.segments.Add(new byte[this.SegmentSize]);
+                    this.segments.Add(this.usePooledArrays ? arraySource.Value.Rent(this.SegmentSize) : new byte[this.SegmentSize]);
                 }
 
                 this._capacity = nSegmentsAfterWrite * this.SegmentSize;
@@ -382,6 +383,12 @@ namespace Bazooka.SegmentedMemoryStream
         public void Shrink()
         {
             int nSegmentsAfterShrink = (int)((ulong)this.Length >> this.bitShiftForModulo) + ((this.Length & (this.SegmentSize - 1)) == 0 ? 0 : 1);
+
+            for (int i = nSegmentsAfterShrink; i < this.segments.Count; i++)
+            {
+                arraySource.Value.Return(this.segments[i]);
+            }
+
             this.segments.RemoveRange(nSegmentsAfterShrink, this.segments.Count - nSegmentsAfterShrink);
 
             this._capacity = this.segments.Count * this.SegmentSize;
@@ -407,6 +414,22 @@ namespace Bazooka.SegmentedMemoryStream
         /// </summary>
         public override void Flush()
         { 
+        }
+
+        /// <summary>
+        /// Disposes the stream, returning pooled buffers if existing.
+        /// </summary>
+        /// <param name="disposing">If disposing unmanaged resources.</param>
+        protected override void Dispose(bool disposing)
+        {
+            if (this.usePooledArrays)
+            {
+                for (int i = 0; i < this.segments.Count; i++)
+                {
+                    arraySource.Value.Return(this.segments[i]);
+                }
+            }
+            base.Dispose(disposing);
         }
     }
 }
