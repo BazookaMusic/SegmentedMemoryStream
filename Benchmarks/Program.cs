@@ -15,7 +15,7 @@
         [Params(64 * 1024, 1024 * 1024, 1024 * 1024 * 1024)]
         public int N { get; set; }
 
-        private static byte[] data = new byte[1024 * 1024 * 1024];
+        private static byte[] data = new byte[64 * 1024];
         private static byte[] buffer = new byte[1024*1024*1024];
 
         private static MemoryStream ms = new MemoryStream();
@@ -53,9 +53,9 @@
         {
             var nms = new MemoryStream();
 
-            while (nms.Length != data.Length)
+            while (nms.Length != N)
             {
-                nms.Write(data, 0, N);
+                nms.Write(data, 0, Math.Min(N, data.Length));
             }
         }
 
@@ -64,9 +64,9 @@
         {
             using (var nsms = new SegmentedMemoryStream())
             {
-                while (nsms.Length != data.Length)
+                while (nsms.Length != N)
                 {
-                    nsms.Write(data.AsSpan().Slice(0, Math.Min(N, 64 * 1024)));
+                    nsms.Write(data.AsSpan().Slice(0, Math.Min(N, data.Length)));
                 }
             }
         }
